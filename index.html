@@ -123,26 +123,16 @@
   .swatch:hover{transform:scale(1.12)}
   .swatch.active{outline:3px solid #fff;outline-offset:2px}
 
-  .sizebtn{
-    font-size:11px;font-weight:800;padding:5px 10px;cursor:pointer;
-    background:var(--cream);color:var(--ink);border:2px solid var(--ink);
-  }
-  .sizebtn.active{background:var(--amber)}
-  .sizebtn .dot{display:inline-block;border-radius:50%;background:var(--ink);vertical-align:middle;margin-right:5px}
-
-  .mix input[type=range]{
-    -webkit-appearance:none;appearance:none;width:64px;height:14px;
+  #brushSlider{
+    -webkit-appearance:none;appearance:none;flex:1;min-width:120px;height:14px;
     background:var(--paper);border:2px solid var(--ink);cursor:pointer;
   }
-  .mix input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none;width:12px;height:18px;background:var(--amber);
-    border:2px solid var(--ink);cursor:pointer;margin-top:-4px;
+  #brushSlider::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;background:var(--amber);
+    border:2px solid var(--ink);cursor:grab;
   }
-  .mix input[type=range]#rSlider::-webkit-slider-thumb{background:#e8483c}
-  .mix input[type=range]#gSlider::-webkit-slider-thumb{background:#4caf7d}
-  .mix input[type=range]#bSlider::-webkit-slider-thumb{background:#3b6fd6}
-  .mixch{font-size:10px;font-weight:800;opacity:.7;width:0.9em}
-  .preview{width:24px;height:24px;border:2px solid var(--ink);flex:0 0 auto}
+  #brushSlider:active::-webkit-slider-thumb{cursor:grabbing}
+  #brushValue{font-size:11px;font-weight:800;min-width:2.6em;text-align:right;color:var(--cream)}
 
   #score{
     position:absolute;inset:0;display:grid;place-items:center;
@@ -191,7 +181,6 @@
     .pane + .pane{border-left:0;border-top:3px solid var(--ink)}
     .hint{display:none}
     .swatch{width:19px;height:19px}
-    .mix input[type=range]{width:44px}
   }
   @media (prefers-reduced-motion:reduce){
     *{transition:none !important}
@@ -234,16 +223,8 @@
             <div class="prow" id="palette"><span class="plab">색상</span></div>
             <div class="prow" id="sizeRow">
               <span class="plab">굵기</span>
-              <button class="sizebtn" data-size="6"><span class="dot" style="width:6px;height:6px"></span>얇게</button>
-              <button class="sizebtn active" data-size="14"><span class="dot" style="width:10px;height:10px"></span>보통</button>
-              <button class="sizebtn" data-size="26"><span class="dot" style="width:16px;height:16px"></span>굵게</button>
-            </div>
-            <div class="prow mix">
-              <span class="plab">혼합</span>
-              <span class="mixch">R</span><input type="range" id="rSlider" min="0" max="255" value="10">
-              <span class="mixch">G</span><input type="range" id="gSlider" min="0" max="255" value="10">
-              <span class="mixch">B</span><input type="range" id="bSlider" min="0" max="255" value="10">
-              <div class="preview" id="mixPreview" title="지금 색"></div>
+              <input type="range" id="brushSlider" min="4" max="32" value="14" aria-label="선 굵기">
+              <output id="brushValue" for="brushSlider" class="mono">14</output>
             </div>
           </div>
         </div>
@@ -293,10 +274,10 @@
   const volFill=$("volFill"), volNum=$("volNum");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* 실제 물감처럼 겹치는 부분이 섞이도록 */
-  uc.globalCompositeOperation = "multiply";
+  /* 같은 색을 반복해서 칠해도 어두워지지 않도록 */
+  uc.globalCompositeOperation = "source-over";
 
-  /* ============ 팔레트 + RGB 혼합 ============ */
+  /* ============ 팔레트 + 선 굵기 ============ */
   const PALETTE = [
     {n:"검정",h:"#0a0a0a"},{n:"빨강",h:"#e8483c"},{n:"주황",h:"#f2a31c"},
     {n:"노랑",h:"#f5d547"},{n:"초록",h:"#4caf7d"},{n:"하늘",h:"#4fb3d9"},
@@ -306,16 +287,7 @@
   let brushSize = 14;
 
   const paletteEl = $("palette");
-  const rSlider=$("rSlider"), gSlider=$("gSlider"), bSlider=$("bSlider"), mixPreview=$("mixPreview");
-
-  function hexToRgb(h){ h=h.replace("#",""); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
-  function rgbToHex(r,g,b){ return "#"+[r,g,b].map(v=>Math.max(0,Math.min(255,v|0)).toString(16).padStart(2,"0")).join(""); }
-
-  function setSlidersFrom(hex){
-    const [r,g,b]=hexToRgb(hex);
-    rSlider.value=r; gSlider.value=g; bSlider.value=b;
-    mixPreview.style.background=hex;
-  }
+  const brushSlider=$("brushSlider"), brushValue=$("brushValue");
 
   PALETTE.forEach((p,i)=>{
     const b=document.createElement("button");
@@ -327,25 +299,13 @@
       currentColor=p.h;
       paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));
       b.classList.add("active");
-      setSlidersFrom(p.h);
     });
     paletteEl.appendChild(b);
   });
-  setSlidersFrom(currentColor);
 
-  function updateFromSliders(){
-    currentColor = rgbToHex(+rSlider.value,+gSlider.value,+bSlider.value);
-    mixPreview.style.background = currentColor;
-    paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));
-  }
-  [rSlider,gSlider,bSlider].forEach(s=>s.addEventListener("input",updateFromSliders));
-
-  document.querySelectorAll(".sizebtn").forEach(b=>{
-    b.addEventListener("click",()=>{
-      document.querySelectorAll(".sizebtn").forEach(x=>x.classList.remove("active"));
-      b.classList.add("active");
-      brushSize = +b.dataset.size;
-    });
+  brushSlider.addEventListener("input",()=>{
+    brushSize = +brushSlider.value;
+    brushValue.textContent = brushSlider.value;
   });
 
   /* ============ 색칠 도형 라이브러리 (0~100 좌표계) ============ */
