@@ -530,25 +530,25 @@
   }
   function evaluate(){
     const Araw=sample(userSheet), Braw=sample(targetSheet);
-    const Amask=blur(blur(alphaOf(Araw),3),2), Bmask=blur(blur(alphaOf(Braw),3),2);
-
-    let inter=0,sa=0,sb=0;
-    for(let i=0;i<N*N;i++){ inter+=Math.min(Amask[i],Bmask[i]); sa+=Amask[i]; sb+=Bmask[i]; }
-    if(sa < N*N*0.004) return {shape:0,color:0,total:0};
-    const dice=(sa+sb)>0 ? (2*inter)/(sa+sb) : 0;
-    const shapeScore=Math.max(0,Math.min(100,Math.round(Math.pow(dice,0.68)*116)));
-
-    let colorSum=0, colorN=0;
+    const Amask=blur(alphaOf(Araw),1), Bmask=blur(alphaOf(Braw),1);
+    let overlap=0, userArea=0, targetArea=0, colorMatch=0;
     for(let i=0;i<N*N;i++){
-      const ta=Braw[i*4+3]/255, ua=Araw[i*4+3]/255;
-      if(ta>0.15 && ua>0.15){
+      const ua=Amask[i], ta=Bmask[i];
+      userArea+=ua; targetArea+=ta;
+      const shared=Math.min(ua,ta);
+      overlap+=shared;
+      if(shared>0.02){
         const dr=Araw[i*4]-Braw[i*4], dg=Araw[i*4+1]-Braw[i*4+1], db=Araw[i*4+2]-Braw[i*4+2];
         const dist=Math.sqrt(dr*dr+dg*dg+db*db);
-        colorSum+=Math.max(0,1-dist/300); colorN++;
+        const match=Math.max(0,1-dist/125);
+        colorMatch+=shared*match*match;
       }
     }
-    const colorScore = colorN>0 ? Math.round((colorSum/colorN)*100) : 0;
-    const total = Math.max(0,Math.min(100,Math.round(shapeScore*0.6+colorScore*0.4)));
+    if(userArea<N*N*0.004) return {shape:0,color:0,total:0};
+    const denominator=userArea+targetArea;
+    const shapeScore=Math.round(100*2*overlap/denominator);
+    const colorScore=Math.round(100*2*colorMatch/denominator);
+    const total=Math.round(shapeScore*Math.pow(colorScore/100,0.8));
     return {shape:shapeScore,color:colorScore,total};
   }
 
