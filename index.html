@@ -136,11 +136,17 @@
   .tool.active{background:var(--amber)}
   .submit-row{justify-content:flex-end}
   .submit-row .tool{background:var(--pink);color:white}
-  .color-pop{position:absolute;left:10px;bottom:90px;z-index:5;background:var(--cream);color:var(--ink);border:3px solid var(--ink);padding:12px;box-shadow:var(--shadow);width:min(290px,calc(100% - 20px))}
-  .color-pop label{display:block;font-size:12px;font-weight:800;margin:8px 0}
-  .color-pop input[type=range]{width:100%}
-  .color-pop .top{display:flex;justify-content:space-between;align-items:center}
-  .color-pop .preview{height:25px;border:2px solid var(--ink);margin-top:8px}
+  .color-pop{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;background:#901d4c;color:#fff;border:3px solid var(--ink);padding:12px;box-shadow:10px 10px 0 var(--ink);width:min(600px,calc(100vw - 24px))}
+  .color-pop .top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+  .color-pop .top strong{font-size:15px}
+  .color-pop .top .tool{font-size:18px;line-height:1}
+  .gradient-wrap{position:relative;height:clamp(150px,25vh,220px);border:3px solid #fff;overflow:hidden}
+  #colorGradient{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .color-marker{position:absolute;width:20px;height:20px;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px var(--ink);transform:translate(-50%,-50%);pointer-events:none;display:none}
+  .color-pop .bottom{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .color-pop .preview{width:38px;height:38px;border:3px solid #fff;border-radius:50%;flex:0 0 auto}
+  .color-pop .bottom span{font-size:12px;flex:1}
+  .color-pop #applyColor{background:var(--amber)}
 
   #brushSlider{
     -webkit-appearance:none;appearance:none;flex:1;min-width:120px;height:14px;
@@ -250,7 +256,7 @@
             </div>
             <div class="prow submit-row"><button class="tool" id="submitBtn" type="button">제출하고 점수 보기</button></div>
           </div>
-          <div class="color-pop" id="colorPop" hidden><div class="top"><strong>색 조절</strong><button class="tool" id="closeColor" type="button">닫기</button></div><label>색상 <input id="hueSlider" type="range" min="0" max="360" value="0"></label><label>채도 <input id="satSlider" type="range" min="0" max="100" value="80"></label><label>밝기 <input id="lightSlider" type="range" min="0" max="100" value="50"></label><div class="preview" id="colorPreview"></div><button class="tool" id="applyColor" type="button">이 색 사용</button></div>
+          <div class="color-pop" id="colorPop" role="dialog" aria-label="색 선택" hidden><div class="top"><strong>원하는 색을 골라주세요</strong><button class="tool" id="closeColor" type="button" aria-label="색 선택 닫기">✕</button></div><div class="gradient-wrap"><canvas id="colorGradient" width="540" height="180" aria-label="색상과 밝기 선택"></canvas><div id="colorMarker" class="color-marker"></div></div><div class="bottom"><div class="preview" id="colorPreview"></div><span>가로로 색상, 세로로 밝기를 조절해요</span><button class="tool" id="applyColor" type="button">이 색 사용</button></div></div>
         </div>
         <div class="pane">
           <h2>오른쪽 · <u>제시된 그림</u></h2>
@@ -321,22 +327,45 @@
     b.style.background=p.h;
     b.title=p.n;
     b.setAttribute("aria-label",p.n);
-    b.addEventListener("pointerdown",e=>{ held=false; holdTimer=setTimeout(()=>{held=true; activeSwatch=b; $("colorPop").hidden=false;},450); });
+    b.addEventListener("pointerdown",e=>{ held=false; holdTimer=setTimeout(()=>{held=true; openColor(b);},450); });
     ["pointerup","pointercancel","pointerleave"].forEach(t=>b.addEventListener(t,()=>clearTimeout(holdTimer)));
-    b.addEventListener("contextmenu",e=>{e.preventDefault(); held=true; activeSwatch=b; $("colorPop").hidden=false;});
+    b.addEventListener("contextmenu",e=>{e.preventDefault(); held=true; openColor(b);});
     b.addEventListener("click",()=>{
       if(held){held=false;return;}
-      currentColor=p.h;
+      currentColor=b.style.backgroundColor;
       erasing=false; $("eraserBtn").classList.remove("active"); $("penBtn").classList.add("active");
       paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));
       b.classList.add("active");
     });
     paletteEl.appendChild(b);
   });
-  function chosenColor(){return `hsl(${$("hueSlider").value} ${$("satSlider").value}% ${$("lightSlider").value}%)`;}
-  ["hueSlider","satSlider","lightSlider"].forEach(id=>$(id).addEventListener("input",()=>$("colorPreview").style.background=chosenColor()));
-  $("colorPreview").style.background=chosenColor();
-  $("applyColor").addEventListener("click",()=>{currentColor=chosenColor(); if(activeSwatch){activeSwatch.style.background=currentColor; paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));activeSwatch.classList.add("active");} erasing=false;$("penBtn").classList.add("active");$("eraserBtn").classList.remove("active");$("colorPop").hidden=true;});
+  const gradient=$("colorGradient"), gc=gradient.getContext("2d");
+  let pickedColor=currentColor;
+  function hsv(h,s,v){
+    const f=n=>{const k=(n+h/60)%6;return Math.round((v-v*s*Math.max(0,Math.min(k,4-k,1)))*255);};
+    return [f(5),f(3),f(1)];
+  }
+  const grad=gc.createImageData(gradient.width,gradient.height);
+  for(let y=0;y<gradient.height;y++)for(let x=0;x<gradient.width;x++){
+    const t=y/(gradient.height-1), h=(210+x/(gradient.width-1)*360)%360;
+    const rgb=hsv(h,Math.min(1,t*2),Math.min(1,(1-t)*2));
+    const i=(y*gradient.width+x)*4;
+    grad.data[i]=rgb[0];grad.data[i+1]=rgb[1];grad.data[i+2]=rgb[2];grad.data[i+3]=255;
+  }
+  gc.putImageData(grad,0,0);
+  function openColor(b){activeSwatch=b;pickedColor=b.style.backgroundColor;$("colorPreview").style.background=pickedColor;$("colorMarker").style.display="none";$("colorPop").hidden=false;}
+  function pickAt(e){
+    const r=gradient.getBoundingClientRect();
+    const x=Math.max(0,Math.min(gradient.width-1,Math.floor((e.clientX-r.left)/r.width*gradient.width)));
+    const y=Math.max(0,Math.min(gradient.height-1,Math.floor((e.clientY-r.top)/r.height*gradient.height)));
+    const i=(y*gradient.width+x)*4;
+    pickedColor=`rgb(${grad.data[i]}, ${grad.data[i+1]}, ${grad.data[i+2]})`;
+    $("colorPreview").style.background=pickedColor;
+    const marker=$("colorMarker");marker.style.left=((x+.5)/gradient.width*100)+"%";marker.style.top=((y+.5)/gradient.height*100)+"%";marker.style.display="block";
+  }
+  gradient.addEventListener("pointerdown",e=>{gradient.setPointerCapture(e.pointerId);pickAt(e);});
+  gradient.addEventListener("pointermove",e=>{if(e.buttons)pickAt(e);});
+  $("applyColor").addEventListener("click",()=>{currentColor=pickedColor; if(activeSwatch){activeSwatch.style.background=currentColor; paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));activeSwatch.classList.add("active");} erasing=false;$("penBtn").classList.add("active");$("eraserBtn").classList.remove("active");$("colorPop").hidden=true;});
   $("closeColor").addEventListener("click",()=>$("colorPop").hidden=true);
   $("penBtn").addEventListener("click",()=>{erasing=false;$("penBtn").classList.add("active");$("eraserBtn").classList.remove("active");$("sizeLabel").textContent="굵기";updateCursorSize();});
   $("eraserBtn").addEventListener("click",()=>{erasing=true;$("eraserBtn").classList.add("active");$("penBtn").classList.remove("active");$("sizeLabel").textContent="지우개";updateCursorSize();});
