@@ -122,6 +122,19 @@
   }
   .swatch:hover{transform:scale(1.12)}
   .swatch.active{outline:3px solid #fff;outline-offset:2px}
+  .swatch{touch-action:none}
+  .mode-choice{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .mode-choice a{display:inline-block;text-decoration:none;text-align:center}
+  .mode-choice .alt{background:var(--amber);color:var(--ink)}
+  .tool{border:2px solid var(--ink);background:var(--cream);color:var(--ink);padding:5px 9px;font-weight:800;cursor:pointer}
+  .tool.active{background:var(--amber)}
+  .submit-row{justify-content:flex-end}
+  .submit-row .tool{background:var(--pink);color:white}
+  .color-pop{position:absolute;left:10px;bottom:90px;z-index:5;background:var(--cream);color:var(--ink);border:3px solid var(--ink);padding:12px;box-shadow:var(--shadow);width:min(290px,calc(100% - 20px))}
+  .color-pop label{display:block;font-size:12px;font-weight:800;margin:8px 0}
+  .color-pop input[type=range]{width:100%}
+  .color-pop .top{display:flex;justify-content:space-between;align-items:center}
+  .color-pop .preview{height:25px;border:2px solid var(--ink);margin-top:8px}
 
   #brushSlider{
     -webkit-appearance:none;appearance:none;flex:1;min-width:120px;height:14px;
@@ -200,8 +213,8 @@
       <p class="kicker">잘 그리면 탈락합니다</p>
       <h1 class="headline">미술 학원 다닌 사람은<br>탈락하는 UI</h1>
       <p class="sub">오른쪽 그림을 왼쪽에 색까지 맞춰 따라 그리면, 닮은 만큼이 <em>당신의 볼륨</em>이 됩니다.<br>잘 그릴수록 시끄러워집니다.</p>
-      <button class="big" id="startBtn">볼륨 조절하기</button>
-      <p class="hint mono">제한 시간 60초 · 형태 60% + 색감 40% · 되돌리기 없음</p>
+      <div class="mode-choice"><button class="big" id="startBtn">채색해서 그리기</button><a class="big alt" href="https://modopsyourgame-lgtm.github.io/volume-drawing-match/">선으로만 그리기</a></div>
+      <p class="hint mono">제한 시간 60초 · 색을 길게 눌러 조정 · 언제든 제출 가능</p>
     </section>
 
     <section class="screen" id="play" hidden>
@@ -222,11 +235,14 @@
           <div class="palette">
             <div class="prow" id="palette"><span class="plab">색상</span></div>
             <div class="prow" id="sizeRow">
-              <span class="plab">굵기</span>
-              <input type="range" id="brushSlider" min="4" max="32" value="14" aria-label="선 굵기">
+              <button class="tool active" id="penBtn" type="button">펜</button><button class="tool" id="eraserBtn" type="button">지우개</button>
+              <span class="plab" id="sizeLabel">굵기</span>
+              <input type="range" id="brushSlider" min="4" max="80" value="14" aria-label="펜 또는 지우개 크기">
               <output id="brushValue" for="brushSlider" class="mono">14</output>
             </div>
+            <div class="prow submit-row"><button class="tool" id="submitBtn" type="button">제출하고 점수 보기</button></div>
           </div>
+          <div class="color-pop" id="colorPop" hidden><div class="top"><strong>색 조절</strong><button class="tool" id="closeColor" type="button">닫기</button></div><label>색상 <input id="hueSlider" type="range" min="0" max="360" value="0"></label><label>채도 <input id="satSlider" type="range" min="0" max="100" value="80"></label><label>밝기 <input id="lightSlider" type="range" min="0" max="100" value="50"></label><div class="preview" id="colorPreview"></div><button class="tool" id="applyColor" type="button">이 색 사용</button></div>
         </div>
         <div class="pane">
           <h2>오른쪽 · <u>제시된 그림</u></h2>
@@ -281,10 +297,12 @@
   const PALETTE = [
     {n:"검정",h:"#0a0a0a"},{n:"빨강",h:"#e8483c"},{n:"주황",h:"#f2a31c"},
     {n:"노랑",h:"#f5d547"},{n:"초록",h:"#4caf7d"},{n:"하늘",h:"#4fb3d9"},
-    {n:"파랑",h:"#3b6fd6"},{n:"보라",h:"#9b6bd6"},{n:"분홍",h:"#ff3d6e"},{n:"갈색",h:"#8a5a3c"}
+    {n:"파랑",h:"#3b6fd6"},{n:"보라",h:"#9b6bd6"},{n:"분홍",h:"#ff3d6e"},{n:"갈색",h:"#8a5a3c"},
+    {n:"흰색",h:"#ffffff"},{n:"회색",h:"#888888"}
   ];
   let currentColor = PALETTE[0].h;
   let brushSize = 14;
+  let erasing=false, activeSwatch=null, holdTimer=null, held=false;
 
   const paletteEl = $("palette");
   const brushSlider=$("brushSlider"), brushValue=$("brushValue");
@@ -295,13 +313,25 @@
     b.style.background=p.h;
     b.title=p.n;
     b.setAttribute("aria-label",p.n);
+    b.addEventListener("pointerdown",e=>{ held=false; holdTimer=setTimeout(()=>{held=true; activeSwatch=b; $("colorPop").hidden=false;},450); });
+    ["pointerup","pointercancel","pointerleave"].forEach(t=>b.addEventListener(t,()=>clearTimeout(holdTimer)));
+    b.addEventListener("contextmenu",e=>{e.preventDefault(); held=true; activeSwatch=b; $("colorPop").hidden=false;});
     b.addEventListener("click",()=>{
+      if(held){held=false;return;}
       currentColor=p.h;
+      erasing=false; $("eraserBtn").classList.remove("active"); $("penBtn").classList.add("active");
       paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));
       b.classList.add("active");
     });
     paletteEl.appendChild(b);
   });
+  function chosenColor(){return `hsl(${$("hueSlider").value} ${$("satSlider").value}% ${$("lightSlider").value}%)`;}
+  ["hueSlider","satSlider","lightSlider"].forEach(id=>$(id).addEventListener("input",()=>$("colorPreview").style.background=chosenColor()));
+  $("colorPreview").style.background=chosenColor();
+  $("applyColor").addEventListener("click",()=>{currentColor=chosenColor(); if(activeSwatch){activeSwatch.style.background=currentColor; paletteEl.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));activeSwatch.classList.add("active");} erasing=false;$("penBtn").classList.add("active");$("eraserBtn").classList.remove("active");$("colorPop").hidden=true;});
+  $("closeColor").addEventListener("click",()=>$("colorPop").hidden=true);
+  $("penBtn").addEventListener("click",()=>{erasing=false;$("penBtn").classList.add("active");$("eraserBtn").classList.remove("active");$("sizeLabel").textContent="굵기";});
+  $("eraserBtn").addEventListener("click",()=>{erasing=true;$("eraserBtn").classList.add("active");$("penBtn").classList.remove("active");$("sizeLabel").textContent="지우개";});
 
   brushSlider.addEventListener("input",()=>{
     brushSize = +brushSlider.value;
@@ -436,6 +466,7 @@
   userSheet.addEventListener("pointerdown",e=>{
     if(!canDraw) return;
     drawing=true; userSheet.setPointerCapture(e.pointerId);
+    uc.globalCompositeOperation=erasing?"destination-out":"source-over";
     uc.lineWidth=brushSize; uc.strokeStyle=currentColor; uc.fillStyle=currentColor;
     const [x,y]=pos(e);
     uc.beginPath(); uc.arc(x,y,brushSize/2,0,Math.PI*2); uc.fill();
@@ -449,6 +480,7 @@
   ["pointerup","pointercancel","pointerleave"].forEach(t=>
     userSheet.addEventListener(t,()=>{drawing=false;}));
   $("clearBtn").addEventListener("click",()=>{ if(canDraw) uc.clearRect(0,0,SIZE,SIZE); });
+  $("submitBtn").addEventListener("click",()=>{if(canDraw) finish();});
 
   /* ============ 유사도 계산 (형태 + 색감) ============ */
   const N=64;
@@ -554,11 +586,12 @@
     raf=requestAnimationFrame(loopTimer);
   }
   function finish(){
+    if(!canDraw) return;
     cancelAnimationFrame(raf); canDraw=false; drawing=false;
     const r=evaluate();
     score.hidden=false; reel.textContent="00"; verdict.innerHTML="&nbsp;";
     breakdown.textContent="형태 00 · 색감 00";
-    if(reduce){ land(r); return; }
+    land(r); return;
     const t0=performance.now(), dur=2600; let last=-1;
     (function roll(){
       const p=Math.min(1,(performance.now()-t0)/dur);
